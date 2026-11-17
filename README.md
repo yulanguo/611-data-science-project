@@ -22,19 +22,6 @@ This project explores North Carolina’s reported commercial and recreational fi
 | `Dockerfile` | Configuration for the project’s container environment |
 | `start.sh` | Container startup script |
 
-The analysis files retain their original “four graphs” filenames but now contain five graphs.
-
-## Run the analysis
-
-Keep the CSV and R Markdown file in the same folder.
-
-Open `FOSS_four_graphs.Rmd` in RStudio and click **Knit**, or run:
-
-```r
-rmarkdown::render("FOSS_four_graphs.Rmd")
-```
-
-To generate separate PNG figures and a combined PDF, run `FOSS_four_graphs.R` and select the CSV when prompted.
 
 ## Main findings
 
