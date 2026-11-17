@@ -1,0 +1,171 @@
+---
+title: "North Carolina Fisheries Landings"
+author: "Yulan Guo"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+---
+
+<!-- To render: keep this file and FOSS_landings.csv in the same folder, then click Knit.
+Install packages in the Console if needed:
+install.packages(c("tidyverse", "scales", "rmarkdown", "knitr"))
+-->
+
+North Carolina's fisheries provide both commercial products and recreational fishing opportunities. This report examines how reported landings changed from 2000 to 2025, which species contributed the most weight in 2024, and which generated the greatest commercial value.
+
+The five graphs move from statewide trends to individual species, offering different views of the same fisheries: their landed weight, commercial value, and recreational landings.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = TRUE,
+                      fig.width = 12, fig.height = 7, dpi = 150)
+```
+
+## About the data
+
+The dataset covers North Carolina commercial and recreational landings from 2000 to 2025. Landings are measured in pounds, and commercial value is reported in dollars. This report uses public records, with 2024 providing a common year for the species rankings. Missing or confidential values are not treated as zero. Some source categories contain groups of species rather than individual species.
+
+```{r import-clean}
+library(tidyverse)
+library(scales)
+
+fish <- read_csv("FOSS_landings.csv", skip = 1,
+                 col_types = cols(.default = col_character())) |>
+  rename(year = Year, species = `NMFS Name`, pounds = Pounds,
+         dollars = Dollars, collection = Collection) |>
+  mutate(year = as.integer(year), pounds = parse_number(pounds),
+         dollars = parse_number(dollars)) |>
+  filter(Confidentiality == "Public")
+
+sum_reported <- function(x) {
+  if (all(is.na(x))) NA_real_ else sum(x, na.rm = TRUE)
+}
+ranking_year <- 2024
+theme_set(theme_minimal(base_size = 13))
+colors <- c(Commercial = "#267C99", Recreational = "#D47932")
+caption <- "Publicly reported values; missing and confidential values are not counted as zero."
+
+```
+
+## How have North Carolina's fisheries landings changed?
+
+Reported commercial landings fell from 154.2 million pounds in 2000 to 45.6 million pounds in 2024. Recreational landings were much closer at those two endpoints: 17.7 million pounds in 2000 and 15.3 million in 2024. The annual lines show how these changes unfolded between years; the endpoint comparison does not imply a steady decline. The file also includes 2025 records, which are shown in the graph.
+
+```{r graph-1}
+# Graph 1: total reported landings over time
+annual <- fish |>
+  group_by(year, collection) |>
+  summarise(pounds = sum_reported(pounds), .groups = "drop")
+p1 <- ggplot(annual, aes(year, pounds / 1e6, color = collection)) +
+  geom_line(linewidth = 1) + geom_point(size = 1.5) +
+  scale_color_manual(values = colors) +
+  labs(title = "North Carolina Reported Fisheries Landings",
+       x = "Year", y = "Landings (million pounds)", color = "Collection",
+       caption = caption) + theme(legend.position = "bottom")
+
+
+p1
+```
+
+## Which species dominate reported landings?
+
+Blue crab had the greatest combined reported landed weight in 2024, at approximately 19.1 million pounds. Northern white shrimp followed at 5.8 million pounds, with bluefish and Spanish mackerel each contributing about 3.2 million. This ranking combines commercial and recreational records, showing which species categories accounted for the greatest weight across both sectors.
+
+```{r graph-2}
+# Graph 2: top 10 species by combined commercial and recreational weight
+# Source species categories may include grouped taxa.
+top_weight <- fish |>
+  filter(year == ranking_year) |>
+  group_by(species) |>
+  summarise(pounds = sum_reported(pounds), .groups = "drop") |>
+  filter(!is.na(pounds)) |>
+  slice_max(pounds, n = 10, with_ties = FALSE)
+p2 <- ggplot(top_weight, aes(pounds / 1e6, reorder(species, pounds))) +
+  geom_col(fill = colors[["Commercial"]]) +
+  labs(title = paste("Top 10 Species by Reported Landings,", ranking_year),
+       subtitle = "Commercial and recreational combined; source species categories",
+       x = "Landings (million pounds)", y = NULL, caption = caption)
+
+
+p2
+```
+
+## Which species generate the most commercial value?
+
+Blue crab also led reported commercial value in 2024, at approximately $28.2 million, followed by northern white shrimp at $11.9 million. Eastern oyster ranked third by commercial value, although it was outside the five leading categories by combined landed weight. Weight and dollar value therefore offer different views of the fisheries. The dollars shown are nominal landings values, rather than profits or estimates of total economic impact.
+
+```{r graph-3}
+# Graph 3: top 10 commercial species by nominal dollar value
+top_value <- fish |>
+  filter(year == ranking_year, collection == "Commercial") |>
+  group_by(species) |>
+  summarise(dollars = sum_reported(dollars), .groups = "drop") |>
+  filter(!is.na(dollars)) |>
+  slice_max(dollars, n = 10, with_ties = FALSE)
+p3 <- ggplot(top_value, aes(dollars / 1e6, reorder(species, dollars))) +
+  geom_col(fill = "#258477") +
+  scale_x_continuous(labels = label_dollar(suffix = "M")) +
+  labs(title = paste("Top 10 Commercial Species by Reported Value,", ranking_year),
+       x = "Commercial value (nominal dollars)", y = NULL, caption = caption)
+
+
+p3
+```
+
+## Do major species follow the same trends?
+
+The statewide totals combine species with different histories. These panels separate the six leading categories by combined weight in 2024 and show their commercial and recreational landings over time. They make it easier to identify when changes occurred and which sector contributed to each species' reported landings. Each panel uses its own vertical scale, so line heights should be compared within a panel rather than across panels.
+
+```{r graph-4, fig.height=10}
+# Graph 4: trends for the six highest-weight species in the ranking year
+selected_species <- top_weight |>
+  slice_max(pounds, n = 6, with_ties = FALSE) |> pull(species)
+trends <- fish |>
+  filter(species %in% selected_species) |>
+  group_by(year, species, collection) |>
+  summarise(pounds = sum_reported(pounds), .groups = "drop") |>
+  complete(year = full_seq(fish$year, 1), species, collection)
+p4 <- ggplot(trends, aes(year, pounds / 1e6, color = collection)) +
+  geom_line(linewidth = 0.8) +
+  facet_wrap(~ species, scales = "free_y", ncol = 2) +
+  scale_color_manual(values = colors) +
+  labs(title = "Reported Landings Trends for Selected Species",
+       subtitle = paste("Six highest-weight species in", ranking_year,
+                        "— panels use different y-axis scales"),
+       x = "Year", y = "Landings (million pounds)", color = "Collection",
+       caption = caption) + theme(legend.position = "bottom")
+
+
+p4
+```
+
+## Which species lead recreational landings?
+
+Spanish mackerel led reported recreational landed weight in 2024, at approximately 2.3 million pounds, followed by bluefish at 2.0 million and spotted seatrout at 1.9 million. These leaders differ from the blue crab and shrimp categories at the top of the combined weight and commercial value rankings. Recreational fishing therefore contributes a distinct mix of species to the reported landings. These figures measure weight landed, rather than fish counts, fishing trips, or fish released.
+
+```{r graph-5}
+top_recreational <- fish |>
+  filter(year == ranking_year, collection == "Recreational") |>
+  group_by(species) |>
+  summarise(pounds = sum_reported(pounds), .groups = "drop") |>
+  filter(!is.na(pounds)) |>
+  slice_max(pounds, n = 10, with_ties = FALSE)
+
+p5 <- ggplot(top_recreational,
+             aes(pounds / 1e6, reorder(species, pounds))) +
+  geom_col(fill = colors[["Recreational"]]) +
+  labs(
+    title = paste("Top 10 Recreational Species by Reported Landings,", ranking_year),
+    x = "Recreational landings (million pounds)",
+    y = NULL,
+    caption = caption
+  )
+p5
+```
+
+## Conclusion
+
+North Carolina's reported fisheries landings show different patterns across commercial and recreational fishing. Commercial landed weight was substantially lower in 2024 than in 2000, while recreational landed weight differed less between those years. In 2024, blue crab led both combined landed weight and commercial value, whereas Spanish mackerel led recreational landed weight. Looking at time trends, weight, and value together gives a fuller account of the fisheries than any one measure alone.
+
+These findings describe the public records available in this dataset. Missing and confidential values are excluded from totals, and changes in reporting or source coverage may affect comparisons over time. Landings alone cannot establish changes in fish populations or explain why a trend occurred. They do, however, identify the species and sectors that contribute most to reported landings and provide a starting point for further investigation.
